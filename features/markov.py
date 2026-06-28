@@ -1,10 +1,195 @@
+import json
+import math
+import random
+from collections import Counter, defaultdict
 from fractions import Fraction
 from pathlib import Path
+from typing import Optional, List
+
 from markovify import Chain
 from music21 import converter, note, chord, stream
-from typing import Optional, List
 import markovify
-import json
+
+
+class NthOrderMarkovChain:
+    """
+    N-th order Markov chain trained from frequency counts, as described in
+    Van Der Merwe & Schulze (2011).
+
+    Transition probabilities are estimated by maximum likelihood:
+        P(q_t | q_{t-1}, ..., q_{t-n}) = count(context → q_t) / count(context)
+
+    Supports configurable order n, probabilistic generation (sampling, never
+    argmax), suffix-based backoff for unseen contexts, and Shannon entropy
+    computation per context.
+    """
+
+    def __init__(self, order: int) -> None:
+        """
+        Args:
+            order: Length of the history window (n in n-th order).
+                   1 = standard first-order chain, 2 = bigram context, etc.
+        """
+        if order < 1:
+            raise ValueError(f"Order must be >= 1, got {order}")
+        self.order = order
+        # Maps n-gram context tuple → Counter of {next_state: frequency}
+        self.transitions: dict[tuple, Counter] = defaultdict(Counter)
+
+    # ------------------------------------------------------------------
+    # Training
+    # ------------------------------------------------------------------
+
+    def train(self, sequences: list[list[str]]) -> None:
+        """
+        Learn transition probabilities from a corpus of sequences.
+
+        Each sequence contributes every consecutive (order+1)-gram:
+        the first `order` elements form the context, the last element
+        is the observed next state.  Short sequences (length <= order)
+        are silently skipped.
+
+        Args:
+            sequences: List of token sequences (each is a list of strings).
+        """
+        for seq in sequences:
+            if len(seq) <= self.order:
+                continue
+            for i in range(len(seq) - self.order):
+                context: tuple = tuple(seq[i : i + self.order])
+                next_state: str = seq[i + self.order]
+                self.transitions[context][next_state] += 1
+
+    # ------------------------------------------------------------------
+    # Probability lookup with backoff
+    # ------------------------------------------------------------------
+
+    def _backoff(self, context: tuple) -> tuple:
+        """
+        Shorten the context by dropping the oldest token until a known
+        context is found, or until the context is empty.
+
+        This is the suffix-based backoff strategy equivalent to PSA
+        state resolution in the paper.
+        """
+        while len(context) > 0 and context not in self.transitions:
+            context = context[1:]
+        return context  # may be () if nothing found
+
+    def get_probabilities(self, context: tuple) -> dict[str, float]:
+        """
+        Return the normalised probability distribution over next states
+        for the given context (with backoff applied).
+
+        Returns an empty dict when no matching context exists at any order.
+        """
+        context = self._backoff(context)
+        if context not in self.transitions:
+            return {}
+        counter = self.transitions[context]
+        total = sum(counter.values())
+        return {state: count / total for state, count in counter.items()}
+
+    # ------------------------------------------------------------------
+    # Generation
+    # ------------------------------------------------------------------
+
+    def generate(self, length: int, seed: tuple | None = None) -> list[str]:
+        """
+        Generate a token sequence of the given length by sampling from the
+        learned probability distributions (never argmax — paper §Music generation).
+
+        Args:
+            length: Desired output sequence length.
+            seed:   Optional starting context tuple.  Falls back to a random
+                    training context if seed is unknown or None.
+
+        Returns:
+            List of generated tokens, exactly `length` elements long
+            (or shorter only if the model has zero transitions).
+        """
+        if not self.transitions:
+            return []
+
+        # Resolve starting context
+        if seed is not None:
+            ctx = self._backoff(seed)
+        else:
+            ctx = ()
+
+        if ctx not in self.transitions:
+            ctx = random.choice(list(self.transitions.keys()))
+
+        output: list[str] = list(ctx)
+
+        while len(output) < length:
+            tail = tuple(output[-self.order :])
+            probs = self.get_probabilities(tail)
+            if not probs:
+                # Dead end: jump to a random training context (handles sparse data)
+                ctx = random.choice(list(self.transitions.keys()))
+                output.extend(ctx)
+                continue
+            states = list(probs.keys())
+            weights = list(probs.values())
+            output.append(random.choices(states, weights=weights)[0])
+
+        return output[:length]
+
+    # ------------------------------------------------------------------
+    # Entropy
+    # ------------------------------------------------------------------
+
+    def entropy(self, context: tuple) -> float:
+        """
+        Shannon entropy (bits) of the transition distribution for one context.
+
+        H(context) = -∑ p(s) · log₂ p(s)
+
+        Returns 0.0 if the context is unknown.
+        """
+        probs = self.get_probabilities(context)
+        if not probs:
+            return 0.0
+        return -sum(p * math.log2(p) for p in probs.values() if p > 0)
+
+    def mean_entropy(self) -> float:
+        """Average Shannon entropy across all contexts seen during training."""
+        if not self.transitions:
+            return 0.0
+        return sum(self.entropy(ctx) for ctx in self.transitions) / len(self.transitions)
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    def save(self, path: str) -> None:
+        """
+        Serialize the model to a JSON file.
+
+        Transitions are stored as a list of [context_list, counter_dict]
+        pairs to avoid JSON key-type restrictions on tuples.
+        """
+        data = {
+            "order": self.order,
+            "transitions": [
+                [list(ctx), dict(counter)]
+                for ctx, counter in self.transitions.items()
+            ],
+        }
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+    @classmethod
+    def load(cls, path: str) -> "NthOrderMarkovChain":
+        """Load a model previously saved with .save()."""
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        chain = cls(data["order"])
+        for ctx_list, counter_dict in data["transitions"]:
+            chain.transitions[tuple(ctx_list)] = Counter(counter_dict)
+        return chain
 
 
 class Dataset:
