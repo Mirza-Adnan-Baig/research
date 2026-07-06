@@ -5,3 +5,5 @@ __pycache__/
 *.pyo
 output/
 features/output/
+graphify-out/.graphify_python
+graphify-out/.graphify_root

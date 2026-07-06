@@ -1,0 +1,97 @@
+{
+  "Dataset/Maestro/maestro-v3.0.0-midi/maestro-v3.0.0/maestro-v3.0.0.json": {
+    "mtime": 1782655353.127053,
+    "ast_hash": "74e2015e0c667f5a59c2fb168128ae52",
+    "semantic_hash": "74e2015e0c667f5a59c2fb168128ae52"
+  },
+  "Dataset/Maestro/maestro-v3.0.0.json": {
+    "mtime": 1782655353.0972433,
+    "ast_hash": "74e2015e0c667f5a59c2fb168128ae52",
+    "semantic_hash": "74e2015e0c667f5a59c2fb168128ae52"
+  },
+  "features/__init__.py": {
+    "mtime": 1782655366.485966,
+    "ast_hash": "c13e66ffbbef0c638caa57864735785b",
+    "semantic_hash": "c13e66ffbbef0c638caa57864735785b"
+  },
+  "features/abc_parser.py": {
+    "mtime": 1782665893.2415977,
+    "ast_hash": "f995b46bc74aaed5675913dfe0f4234c",
+    "semantic_hash": "f995b46bc74aaed5675913dfe0f4234c"
+  },
+  "features/augmentation.py": {
+    "mtime": 1782665916.7336228,
+    "ast_hash": "9a1a669bd8fb12e0261cf825246dc438",
+    "semantic_hash": "9a1a669bd8fb12e0261cf825246dc438"
+  },
+  "features/evaluate.py": {
+    "mtime": 1782665939.6334896,
+    "ast_hash": "82fd9dae91a6cda28a2fbabbcdbd9734",
+    "semantic_hash": "82fd9dae91a6cda28a2fbabbcdbd9734"
+  },
+  "features/markov.py": {
+    "mtime": 1782665854.4056795,
+    "ast_hash": "7d3e56951f3a6e565d4292771143ffcf",
+    "semantic_hash": "7d3e56951f3a6e565d4292771143ffcf"
+  },
+  "features/markov_and_music_gui.py": {
+    "mtime": 1782655366.5056112,
+    "ast_hash": "0e3c005bc7fba7afdfb1bba876f5093f",
+    "semantic_hash": "0e3c005bc7fba7afdfb1bba876f5093f"
+  },
+  "features/midi_export.py": {
+    "mtime": 1783171056.528293,
+    "ast_hash": "9f4362baf3e3a74ce3e27c15ec75e95f",
+    "semantic_hash": "9f4362baf3e3a74ce3e27c15ec75e95f"
+  },
+  "features/midi_player_gui.py": {
+    "mtime": 1782655366.5173302,
+    "ast_hash": "644659df837f8660b6c323fe2f028228",
+    "semantic_hash": "644659df837f8660b6c323fe2f028228"
+  },
+  "features/midiplayer.py": {
+    "mtime": 1782655366.5273445,
+    "ast_hash": "9b72f13e6aa769c5b20520515231c6be",
+    "semantic_hash": "9b72f13e6aa769c5b20520515231c6be"
+  },
+  "features/worker_thread.py": {
+    "mtime": 1782655366.5350113,
+    "ast_hash": "f14699c6a4ad21fc3e5701d5c38d513b",
+    "semantic_hash": "f14699c6a4ad21fc3e5701d5c38d513b"
+  },
+  "main.py": {
+    "mtime": 1782655349.652785,
+    "ast_hash": "e4b44c5f6e30caee4fffa4996e78a9b0",
+    "semantic_hash": "e4b44c5f6e30caee4fffa4996e78a9b0"
+  },
+  "pipeline.py": {
+    "mtime": 1783356654.7247763,
+    "ast_hash": "4668c4a8fedbc8dc1096a1b027960d9c",
+    "semantic_hash": "4668c4a8fedbc8dc1096a1b027960d9c"
+  },
+  "README.md": {
+    "mtime": 1782655349.6211076,
+    "ast_hash": "585fed0178296a57a4be682ae8add47f",
+    "semantic_hash": "585fed0178296a57a4be682ae8add47f"
+  },
+  "explanation_augmentation.html": {
+    "mtime": 1782771677.249303,
+    "ast_hash": "9e23eb7f1a1e247cdb3dd711cfaa553f",
+    "semantic_hash": "9e23eb7f1a1e247cdb3dd711cfaa553f"
+  },
+  "how_it_all_works.html": {
+    "mtime": 1783173021.3569198,
+    "ast_hash": "ecfa76e22bf39063052d3569ddbf1a44",
+    "semantic_hash": "ecfa76e22bf39063052d3569ddbf1a44"
+  },
+  "project_explanation.html": {
+    "mtime": 1782770172.8106456,
+    "ast_hash": "fbb640ed4e3d5c4b7dc072b4f1a2bb52",
+    "semantic_hash": "fbb640ed4e3d5c4b7dc072b4f1a2bb52"
+  },
+  "Van Der Merwe and Schulze - 2011 - Music Generation with Markov Models.pdf": {
+    "mtime": 1778345784.3888192,
+    "ast_hash": "b252bb8afbf7a8d7cb239637f51d6a60",
+    "semantic_hash": "b252bb8afbf7a8d7cb239637f51d6a60"
+  }
+}
