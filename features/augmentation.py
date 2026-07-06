@@ -24,10 +24,9 @@ CHROMATIC: list[str] = [
     "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
 ]
 
-# Flat-to-sharp aliases for incoming chord names that may use flat notation.
-_FLAT_TO_SHARP: dict[str, str] = {
-    "Db": "C#", "Eb": "D#", "Fb": "E",  "Gb": "F#",
-    "Ab": "G#", "Bb": "A#", "Cb": "B",
+# Semitone offset of each natural note letter from C.
+_NATURAL_SEMITONE: dict[str, int] = {
+    "C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11,
 }
 
 
@@ -35,23 +34,30 @@ def _parse_chord(chord_name: str) -> tuple[str, str]:
     """
     Split a chord name into (root, quality).
 
-    Root is normalised to sharp notation.  Quality is everything after
-    the root (e.g. 'm', 'M7', 'dim', '7', '').
+    Root is normalised to a single pitch-class name from CHROMATIC by summing
+    any number of leading '#'/'b' accidentals as semitone offsets from the
+    natural letter, so multi-accidental roots (e.g. a double sharp) resolve
+    to their correct enharmonic equivalent instead of being mis-parsed as
+    quality. Quality is everything after the accidentals (e.g. 'm', 'M7',
+    'dim', '7', '').
 
     Examples:
         'Am'  → ('A',  'm')
         'C#m' → ('C#', 'm')
         'Bb7' → ('A#', '7')
+        'F##' → ('G',  '')
         'G'   → ('G',  '')
     """
-    # Two-character root: letter + '#' or 'b'
-    if len(chord_name) >= 2 and chord_name[1] in ("#", "b"):
-        root, quality = chord_name[:2], chord_name[2:]
-    else:
-        root, quality = chord_name[:1], chord_name[1:]
+    if not chord_name or chord_name[0] not in _NATURAL_SEMITONE:
+        return chord_name, ""
 
-    root = _FLAT_TO_SHARP.get(root, root)
-    return root, quality
+    semitone = _NATURAL_SEMITONE[chord_name[0]]
+    i = 1
+    while i < len(chord_name) and chord_name[i] in ("#", "b"):
+        semitone += 1 if chord_name[i] == "#" else -1
+        i += 1
+
+    return CHROMATIC[semitone % 12], chord_name[i:]
 
 
 def _transpose_chord(chord_name: str, semitones: int) -> str:
