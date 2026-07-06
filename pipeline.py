@@ -20,6 +20,9 @@ Outputs (written to output/pipeline/):
     entropy_comparison.png                 — bar chart: mean entropy
     vocabulary_comparison.png              — bar chart: vocabulary coverage
     diversity_comparison.png               — line chart: n-gram diversity vs order
+
+Also written to output/generated_files/{baseline,augmented}/order_N/*.mid —
+rendered MIDI files, one per generated sequence.
 """
 
 import argparse
@@ -40,11 +43,13 @@ from features.evaluate import (
     ngram_diversity,
     js_divergence,
 )
+from features.midi_export import save_chords_as_midi
 
 # Dimension names that match the song dict keys
 CHAIN_TYPES: list[str] = ["chord_progression", "chord_duration", "rhythm"]
 
 OUTPUT_DIR = Path("output/pipeline")
+MIDI_OUTPUT_DIR = Path("output/generated_files")
 
 
 # ------------------------------------------------------------------
@@ -292,6 +297,26 @@ def _save_generated(
             json.dump(seqs, f, indent=2)
 
 
+def _export_midi(
+    baseline_gen: dict[str, list[list[str]]],
+    augmented_gen: dict[str, list[list[str]]],
+    order: int,
+) -> None:
+    """
+    Render each generated chord_progression/chord_duration pair to a MIDI
+    file, straight from the sequences just sampled from the trained chains.
+    """
+    for label, gen in (("baseline", baseline_gen), ("augmented", augmented_gen)):
+        out_dir = MIDI_OUTPUT_DIR / label / f"order_{order}"
+        progressions = gen["chord_progression"]
+        durations = gen["chord_duration"]
+        for i, (progression, duration_strs) in enumerate(zip(progressions, durations)):
+            durations_f = [float(d) for d in duration_strs]
+            save_chords_as_midi(
+                progression, durations_f, str(out_dir / f"{label}_{i + 1}.mid")
+            )
+
+
 # ------------------------------------------------------------------
 # Main
 # ------------------------------------------------------------------
@@ -369,6 +394,10 @@ def main() -> None:
 
         _save_models(baseline_models, augmented_models, order)
         _save_generated(baseline_gen, augmented_gen, order)
+
+        print("    Rendering MIDI files...", end="", flush=True)
+        _export_midi(baseline_gen, augmented_gen, order)
+        print(" done")
 
         rows = _compute_metrics(
             baseline_models, augmented_models,
