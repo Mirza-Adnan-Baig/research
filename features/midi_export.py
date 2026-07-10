@@ -12,9 +12,10 @@ chain, so combining them would be an arbitrary alignment rather than
 a real reconstruction.
 """
 
+import random
 from pathlib import Path
 
-from music21 import harmony, stream, tempo
+from music21 import harmony, instrument, note, pitch, stream, tempo
 
 
 def chords_to_midi_stream(
@@ -42,5 +43,207 @@ def save_chords_as_midi(
 ) -> None:
     """Render a chord sequence and write it to `path` as a MIDI file."""
     s = chords_to_midi_stream(chord_progression, chord_duration)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    s.write("midi", path)
+
+
+def _voice_lead(
+    pitch_classes: list[int], prev_pitches: list[pitch.Pitch] | None
+) -> list[pitch.Pitch]:
+    """
+    Pick octaves for `pitch_classes` that stay close to `prev_pitches`
+    (each voice snaps to the nearest octave of its previous position),
+    instead of always re-rendering chords in closed root position.
+    """
+    if prev_pitches is None:
+        voiced: list[pitch.Pitch] = []
+        prev_ps = None
+        for pc in pitch_classes:
+            p = pitch.Pitch()
+            p.pitchClass = pc
+            p.octave = 4
+            if prev_ps is not None:
+                while p.ps < prev_ps:
+                    p.octave += 1
+            voiced.append(p)
+            prev_ps = p.ps
+        return voiced
+
+    voiced = []
+    for i, pc in enumerate(pitch_classes):
+        prev = prev_pitches[i % len(prev_pitches)]
+        candidates = []
+        for octave_offset in (-1, 0, 1):
+            p = pitch.Pitch()
+            p.pitchClass = pc
+            p.octave = prev.octave + octave_offset
+            candidates.append(p)
+        voiced.append(min(candidates, key=lambda p: abs(p.ps - prev.ps)))
+    return voiced
+
+
+def _strum_notes(
+    s: stream.Stream,
+    voiced_pitches: list[pitch.Pitch],
+    onset: float,
+    duration: float,
+    strum_spacing: float,
+    base_velocity: int,
+    velocity_jitter: int,
+) -> None:
+    """
+    Insert one Note per pitch, staggered low-to-high like a real strum
+    instead of triggering the whole chord at the exact same instant.
+    Later (higher) notes start slightly after earlier ones but all end
+    together at `onset + duration`; each also gets a small random
+    velocity jitter instead of uniform loudness.
+    """
+    ordered = sorted(voiced_pitches, key=lambda p: p.ps)
+    spacing = min(strum_spacing, duration * 0.1 / max(len(ordered) - 1, 1))
+    for i, p in enumerate(ordered):
+        note_onset = onset + i * spacing
+        note_duration = max(duration - i * spacing, 0.05)
+        n = note.Note(p)
+        n.duration.quarterLength = note_duration
+        n.volume.velocity = max(
+            1, min(127, base_velocity + random.randint(-velocity_jitter, velocity_jitter))
+        )
+        s.insert(note_onset, n)
+
+
+def voice_led_chords_to_midi_stream(
+    chord_progression: list[str],
+    chord_duration: list[float],
+    instrument_obj: instrument.Instrument | None = None,
+    strum_spacing: float = 0.03,
+    base_velocity: int = 80,
+    velocity_jitter: int = 10,
+    bpm: float = 100,
+) -> stream.Stream:
+    """
+    Render a chord-progression/chord-duration pair with smooth voice leading
+    (each voice moves to the nearest octave of the same chord tone in the
+    next chord) instead of always restacking chords in closed root position,
+    strumming each chord's notes low-to-high instead of hitting them all at
+    once, with slight per-note velocity jitter instead of uniform loudness.
+
+    Listening-only rendering — not used by the scientific pipeline output
+    in `chords_to_midi_stream` / `save_chords_as_midi` above.
+    """
+    s = stream.Stream()
+    s.insert(0, instrument_obj or instrument.Choir())
+    s.insert(0, tempo.MetronomeMark(number=bpm))
+
+    prev_pitches: list[pitch.Pitch] | None = None
+    onset = 0.0
+    for label, duration in zip(chord_progression, chord_duration):
+        if duration <= 0:
+            continue
+        try:
+            cs = harmony.ChordSymbol(label)
+        except Exception:
+            continue
+        pitch_classes = [p.pitchClass for p in cs.pitches]
+        voiced_pitches = _voice_lead(pitch_classes, prev_pitches)
+        _strum_notes(
+            s, voiced_pitches, onset, duration, strum_spacing, base_velocity, velocity_jitter
+        )
+        prev_pitches = voiced_pitches
+        onset += duration
+
+    return s
+
+
+def save_voice_led_chords_as_midi(
+    chord_progression: list[str],
+    chord_duration: list[float],
+    path: str,
+    instrument_obj: instrument.Instrument | None = None,
+    strum_spacing: float = 0.03,
+    base_velocity: int = 80,
+    velocity_jitter: int = 10,
+    bpm: float = 100,
+) -> None:
+    """Render a voice-led, strummed chord sequence and write it to `path` as a MIDI file."""
+    s = voice_led_chords_to_midi_stream(
+        chord_progression, chord_duration, instrument_obj,
+        strum_spacing, base_velocity, velocity_jitter, bpm,
+    )
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    s.write("midi", path)
+
+
+def melody_and_chords_to_midi_stream(
+    chord_progression: list[str],
+    chord_duration: list[float],
+    melody: list[str],
+    chord_instrument: instrument.Instrument | None = None,
+    melody_instrument: instrument.Instrument | None = None,
+    bpm: float = 100,
+) -> stream.Score:
+    """
+    Render voice-led chords plus a melody line as two parts of a Score,
+    both placed on the same duration grid (`chord_duration`) so they stay
+    rhythmically aligned. `melody` is expected to be its own independently
+    generated note-name sequence (own Markov chain, trained on real
+    top-voice pitches) — same length as chord_progression/chord_duration.
+    Time-locking it to the chord grid is a listening choice, same as
+    reusing real chord_duration for the chord render elsewhere in this
+    module — not a claim that the two were generated together.
+    """
+    score = stream.Score()
+
+    chord_part = stream.Part()
+    chord_part.insert(0, chord_instrument or instrument.Piano())
+    chord_part.insert(0, tempo.MetronomeMark(number=bpm))
+
+    melody_part = stream.Part()
+    melody_part.insert(0, melody_instrument or instrument.Flute())
+
+    prev_pitches: list[pitch.Pitch] | None = None
+    onset = 0.0
+    for label, duration, mel_token in zip(chord_progression, chord_duration, melody):
+        if duration <= 0:
+            continue
+        try:
+            cs = harmony.ChordSymbol(label)
+        except Exception:
+            continue
+        pitch_classes = [p.pitchClass for p in cs.pitches]
+        voiced_pitches = _voice_lead(pitch_classes, prev_pitches)
+        for p in voiced_pitches:
+            n = note.Note(p)
+            n.duration.quarterLength = duration
+            chord_part.insert(onset, n)
+        prev_pitches = voiced_pitches
+
+        try:
+            mn = note.Note(pitch.Pitch(mel_token))
+            mn.duration.quarterLength = duration
+            melody_part.insert(onset, mn)
+        except Exception:
+            pass
+
+        onset += duration
+
+    score.insert(0, chord_part)
+    score.insert(0, melody_part)
+    return score
+
+
+def save_melody_and_chords_as_midi(
+    chord_progression: list[str],
+    chord_duration: list[float],
+    melody: list[str],
+    path: str,
+    chord_instrument: instrument.Instrument | None = None,
+    melody_instrument: instrument.Instrument | None = None,
+    bpm: float = 100,
+) -> None:
+    """Render voice-led chords plus a melody line and write it to `path` as a MIDI file."""
+    s = melody_and_chords_to_midi_stream(
+        chord_progression, chord_duration, melody,
+        chord_instrument, melody_instrument, bpm,
+    )
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     s.write("midi", path)

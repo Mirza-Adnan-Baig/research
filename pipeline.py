@@ -101,21 +101,37 @@ def _generate(
 def _compute_metrics(
     baseline: dict[str, NthOrderMarkovChain],
     augmented: dict[str, NthOrderMarkovChain],
+    baseline_seqs: dict[str, list[list[str]]],
     baseline_gen: dict[str, list[list[str]]],
     augmented_gen: dict[str, list[list[str]]],
     order: int,
 ) -> list[dict]:
-    """Return one metric row per chain type for the given order."""
+    """
+    Return one metric row per chain type for the given order.
+
+    Original entropy/vocab equal baseline's exactly, since the baseline model
+    is trained directly and only on the original (un-augmented) corpus — they
+    are not separately computed. Original diversity is genuinely different: it
+    is the n-gram diversity of the real corpus's own sequences (`baseline_seqs`),
+    not of freshly generated output, and is on a different sample size (412
+    real songs vs `n_sequences` generated ones) so isn't directly comparable in
+    absolute terms to b_diversity/a_diversity — see entropy_comparison's caller.
+    """
     rows: list[dict] = []
     for ct in CHAIN_TYPES:
+        b_entropy = round(mean_entropy(baseline[ct]), 4)
+        b_vocab = vocabulary_coverage(baseline[ct])
         rows.append(
             {
                 "order": order,
                 "chain": ct,
-                "b_entropy": round(mean_entropy(baseline[ct]), 4),
+                "o_entropy": b_entropy,
+                "b_entropy": b_entropy,
                 "a_entropy": round(mean_entropy(augmented[ct]), 4),
-                "b_vocab": vocabulary_coverage(baseline[ct]),
+                "o_vocab": b_vocab,
+                "b_vocab": b_vocab,
                 "a_vocab": vocabulary_coverage(augmented[ct]),
+                "o_diversity": round(ngram_diversity(baseline_seqs[ct], order), 4),
                 "b_diversity": round(ngram_diversity(baseline_gen[ct], order), 4),
                 "a_diversity": round(ngram_diversity(augmented_gen[ct], order), 4),
                 "js_div": round(js_divergence(baseline[ct], augmented[ct]), 4),
@@ -187,24 +203,30 @@ def _save_plots(all_rows: list[dict]) -> None:
     orders = sorted({r["order"] for r in all_rows})
 
     # ---- Plot 1: Mean entropy per chain type, grouped by order ----
-    fig, axes = plt.subplots(1, len(orders), figsize=(5 * len(orders), 5), sharey=True)
+    # Note: Original's entropy equals Baseline's exactly (baseline is trained
+    # directly on the original corpus), so its bar is expected to match
+    # Baseline's height in every group — that's confirming correctness, not
+    # a rendering artifact.
+    fig, axes = plt.subplots(1, len(orders), figsize=(6 * len(orders), 5), sharey=True)
     if len(orders) == 1:
         axes = [axes]
     for ax, order in zip(axes, orders):
         rows = [r for r in all_rows if r["order"] == order]
         labels = [r["chain"].replace("_", "\n") for r in rows]
         x = list(range(len(labels)))
-        w = 0.35
-        ax.bar([xi - w / 2 for xi in x], [r["b_entropy"] for r in rows],
+        w = 0.27
+        ax.bar([xi - w for xi in x], [r["o_entropy"] for r in rows],
+               w, label="Original", color="gray")
+        ax.bar(x, [r["b_entropy"] for r in rows],
                w, label="Baseline", color="steelblue")
-        ax.bar([xi + w / 2 for xi in x], [r["a_entropy"] for r in rows],
+        ax.bar([xi + w for xi in x], [r["a_entropy"] for r in rows],
                w, label="Augmented", color="darkorange")
         ax.set_title(f"Order {order}")
         ax.set_xticks(x)
         ax.set_xticklabels(labels, fontsize=8)
         ax.set_ylabel("Mean Entropy (bits)")
         ax.legend(fontsize=8)
-    fig.suptitle("Mean Shannon Entropy: Baseline vs Augmented", fontsize=12)
+    fig.suptitle("Mean Shannon Entropy: Original vs Baseline vs Augmented", fontsize=12)
     fig.tight_layout()
     path = OUTPUT_DIR / "entropy_comparison.png"
     fig.savefig(path, dpi=150)
@@ -212,24 +234,27 @@ def _save_plots(all_rows: list[dict]) -> None:
     print(f"  Saved {path}")
 
     # ---- Plot 2: Vocabulary coverage per chain type ----
-    fig, axes = plt.subplots(1, len(orders), figsize=(5 * len(orders), 5), sharey=True)
+    # Same note as Plot 1: Original == Baseline here by construction.
+    fig, axes = plt.subplots(1, len(orders), figsize=(6 * len(orders), 5), sharey=True)
     if len(orders) == 1:
         axes = [axes]
     for ax, order in zip(axes, orders):
         rows = [r for r in all_rows if r["order"] == order]
         labels = [r["chain"].replace("_", "\n") for r in rows]
         x = list(range(len(labels)))
-        w = 0.35
-        ax.bar([xi - w / 2 for xi in x], [r["b_vocab"] for r in rows],
+        w = 0.27
+        ax.bar([xi - w for xi in x], [r["o_vocab"] for r in rows],
+               w, label="Original", color="gray")
+        ax.bar(x, [r["b_vocab"] for r in rows],
                w, label="Baseline", color="steelblue")
-        ax.bar([xi + w / 2 for xi in x], [r["a_vocab"] for r in rows],
+        ax.bar([xi + w for xi in x], [r["a_vocab"] for r in rows],
                w, label="Augmented", color="darkorange")
         ax.set_title(f"Order {order}")
         ax.set_xticks(x)
         ax.set_xticklabels(labels, fontsize=8)
         ax.set_ylabel("Unique States (Vocabulary Size)")
         ax.legend(fontsize=8)
-    fig.suptitle("Vocabulary Coverage: Baseline vs Augmented", fontsize=12)
+    fig.suptitle("Vocabulary Coverage: Original vs Baseline vs Augmented", fontsize=12)
     fig.tight_layout()
     path = OUTPUT_DIR / "vocabulary_comparison.png"
     fig.savefig(path, dpi=150)
@@ -237,10 +262,19 @@ def _save_plots(all_rows: list[dict]) -> None:
     print(f"  Saved {path}")
 
     # ---- Plot 3: N-gram diversity vs Markov order (line chart) ----
+    # Original diversity is computed on the real corpus's own sequences
+    # (412 songs), not generated output (n_sequences short samples) — the
+    # absolute values aren't directly comparable across that sample-size
+    # gap, so treat Original as a separate reference line, not a target
+    # Baseline/Augmented should numerically match.
     fig, axes = plt.subplots(1, len(CHAIN_TYPES), figsize=(5 * len(CHAIN_TYPES), 5))
     if len(CHAIN_TYPES) == 1:
         axes = [axes]
     for ax, ct in zip(axes, CHAIN_TYPES):
+        o_vals = [
+            next((r["o_diversity"] for r in all_rows if r["order"] == o and r["chain"] == ct), 0.0)
+            for o in orders
+        ]
         b_vals = [
             next((r["b_diversity"] for r in all_rows if r["order"] == o and r["chain"] == ct), 0.0)
             for o in orders
@@ -249,6 +283,7 @@ def _save_plots(all_rows: list[dict]) -> None:
             next((r["a_diversity"] for r in all_rows if r["order"] == o and r["chain"] == ct), 0.0)
             for o in orders
         ]
+        ax.plot(orders, o_vals, marker="^", label="Original", color="gray", linestyle="--")
         ax.plot(orders, b_vals, marker="o", label="Baseline", color="steelblue")
         ax.plot(orders, a_vals, marker="s", label="Augmented", color="darkorange")
         ax.set_title(ct.replace("_", " ").title(), fontsize=10)
@@ -257,7 +292,7 @@ def _save_plots(all_rows: list[dict]) -> None:
         ax.set_xticks(orders)
         ax.legend(fontsize=8)
         ax.grid(axis="y", linestyle="--", alpha=0.5)
-    fig.suptitle("N-gram Diversity vs Markov Order: Baseline vs Augmented", fontsize=12)
+    fig.suptitle("N-gram Diversity vs Markov Order: Original vs Baseline vs Augmented", fontsize=12)
     fig.tight_layout()
     path = OUTPUT_DIR / "diversity_comparison.png"
     fig.savefig(path, dpi=150)
@@ -403,7 +438,7 @@ def main() -> None:
 
         rows = _compute_metrics(
             baseline_models, augmented_models,
-            baseline_gen, augmented_gen,
+            baseline_seqs, baseline_gen, augmented_gen,
             order,
         )
         all_rows.extend(rows)

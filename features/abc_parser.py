@@ -35,14 +35,21 @@ def _normalise_root(name: str) -> str:
     return _MUSIC21_FLAT_TO_SHARP.get(name, name)
 
 
+_QUALITY_SUFFIX: dict[str, str] = {
+    "minor": "m",
+    "diminished": "dim",
+    "augmented": "aug",
+}
+
+
 def _chord_label(c: chord.Chord) -> str:
     """
-    Derive a simplified chord label ('C', 'Am', 'Gm', etc.) from a
-    music21 Chord object.  Falls back to the lowest pitch name on error.
+    Derive a simplified chord label ('C', 'Am', 'Bdim', 'Caug', etc.) from
+    a music21 Chord object.  Falls back to the lowest pitch name on error.
     """
     try:
         root = _normalise_root(c.root().name)
-        quality = "m" if c.quality == "minor" else ""
+        quality = _QUALITY_SUFFIX.get(c.quality, "")
         return root + quality
     except Exception:
         return _normalise_root(c.pitches[0].name)
@@ -63,12 +70,17 @@ def _extract_from_score(score) -> dict | None:
 
     chord_progression: list[str] = []
     chord_duration: list[float] = []
+    melody: list[str] = []
 
     for c in chordified.flatten().getElementsByClass(chord.Chord):
         if c.duration.quarterLength <= 0:
             continue
         chord_progression.append(_chord_label(c))
         chord_duration.append(float(c.duration.quarterLength))
+        # Top note of the same chordified slice — aligned 1:1 with
+        # chord_progression/chord_duration by construction (same source
+        # chord object), so no independent-chain pairing problem here.
+        melody.append(max(c.pitches, key=lambda p: p.ps).nameWithOctave)
 
     if not chord_progression:
         return None
@@ -91,6 +103,7 @@ def _extract_from_score(score) -> dict | None:
         "chord_progression": chord_progression,
         "chord_duration": chord_duration,
         "rhythm": rhythm,
+        "melody": melody,
     }
 
 

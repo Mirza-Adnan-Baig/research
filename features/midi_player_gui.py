@@ -91,6 +91,7 @@ class MidiPlayerGUI(QMainWindow):
     def on_music_end(self):
         self.file_loaded = False
         self.play_button.setText("Play")
+        self.show_area.clear()
         self.update_button_state()
 
     def stop(self):
