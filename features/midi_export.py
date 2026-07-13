@@ -15,7 +15,7 @@ a real reconstruction.
 import random
 from pathlib import Path
 
-from music21 import harmony, instrument, note, pitch, stream, tempo
+from music21 import chord, harmony, instrument, note, pitch, stream, tempo
 
 
 def chords_to_midi_stream(
@@ -168,6 +168,61 @@ def save_voice_led_chords_as_midi(
     s = voice_led_chords_to_midi_stream(
         chord_progression, chord_duration, instrument_obj,
         strum_spacing, base_velocity, velocity_jitter, bpm,
+    )
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    s.write("midi", path)
+
+
+def voice_led_block_chords_to_midi_stream(
+    chord_progression: list[str],
+    chord_duration: list[float],
+    bpm: float,
+    instrument_obj: instrument.Instrument | None = None,
+    velocity: int = 80,
+) -> stream.Stream:
+    """
+    Render a chord-progression/chord-duration pair as voice-led block
+    chords (one Chord object per slot, all tones hit together, uniform
+    velocity) — the plain listening-comparison render used to A/B
+    generated output against a real song's own rhythm and tempo, as
+    opposed to the strummed/jittered variant above.
+    """
+    s = stream.Stream()
+    s.insert(0, instrument_obj or instrument.Piano())
+    s.insert(0, tempo.MetronomeMark(number=bpm))
+
+    prev_pitches: list[pitch.Pitch] | None = None
+    onset = 0.0
+    for label, duration in zip(chord_progression, chord_duration):
+        if duration <= 0:
+            continue
+        try:
+            cs = harmony.ChordSymbol(label)
+        except Exception:
+            continue
+        pitch_classes = [p.pitchClass for p in cs.pitches]
+        voiced_pitches = _voice_lead(pitch_classes, prev_pitches)
+        c = chord.Chord(voiced_pitches)
+        c.duration.quarterLength = duration
+        c.volume.velocity = velocity
+        s.insert(onset, c)
+        prev_pitches = voiced_pitches
+        onset += duration
+
+    return s
+
+
+def save_voice_led_block_chords_as_midi(
+    chord_progression: list[str],
+    chord_duration: list[float],
+    bpm: float,
+    path: str,
+    instrument_obj: instrument.Instrument | None = None,
+    velocity: int = 80,
+) -> None:
+    """Render voice-led block chords and write them to `path` as a MIDI file."""
+    s = voice_led_block_chords_to_midi_stream(
+        chord_progression, chord_duration, bpm, instrument_obj, velocity
     )
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     s.write("midi", path)
