@@ -1,93 +1,145 @@
 # Multidimensional Markov Music
 
+A tool for generating symbolic music with Markov chains, plus a research
+pipeline that tests whether transposing training data into every key helps
+those chains generate more varied output.
 
+## What's in this repo
 
-## Getting started
+Two separate things live here:
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+1. A desktop GUI (`main.py`) where you pick a dataset, train Markov models
+   on it, generate a new piece, and play the result back as MIDI.
+2. A research pipeline (`pipeline.py`) that trains models on the standard
+   Bach chorale corpus, both with and without transposition augmentation,
+   and measures the difference with entropy, vocabulary coverage, n-gram
+   diversity, and Jensen-Shannon divergence.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## How generation works
 
-## Add your files
+A song isn't modeled as one sequence. It's split into three independent
+chains, trained and sampled separately:
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+- `chord_progression` (the harmony)
+- `chord_duration` (how long each chord lasts)
+- `rhythm`
+
+Each chain is an n-th order Markov model (`features/markov.py`), so the
+next symbol depends on the last `n` symbols instead of just the last one.
+Generation samples all three chains and recombines them into a chord
+sequence, which then gets rendered to a `.mid` file.
+
+## Setup
+
+Requires Python 3.10 or newer.
 
 ```
-cd existing_repo
-git remote add origin https://git.informatik.tu-cottbus.de/cunningh1/multidimensional-markov-music.git
-git branch -M main
-git push -uf origin main
+git clone <this repo>
+cd multidimensional-markov-music
+python -m venv venv
+venv\Scripts\activate        # Windows
+source venv/bin/activate     # macOS/Linux
+pip install PyQt5 pygame music21 markovify matplotlib
 ```
 
-## Integrate with your tools
+## Generating and listening to music (GUI)
 
-- [ ] [Set up project integrations](https://git.informatik.tu-cottbus.de/cunningh1/multidimensional-markov-music/-/settings/integrations)
+```
+python main.py
+```
 
-## Collaborate with your team
+1. Click **Select dataset** and point it at a folder under `Dataset/`
+   (Bach, Haendel, Maestro, or Mozart), or your own MIDI/ABC files.
+2. Click **Analyze dataset** to train the chord progression, chord
+   duration, and rhythm models on it.
+3. Click **Generate new music** to sample a new sequence from those
+   models.
+4. Click **Start MIDI Player**, open the generated `.mid` file, and press
+   Play.
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+## Running the research pipeline
 
-## Test and Deploy
+```
+python pipeline.py --orders 1 2 3
+```
 
-Use the built-in continuous integration in GitLab.
+By default this loads the 412-song Bach chorale corpus that ships with
+`music21`. Pass `--dataset-path` to use a different folder of ABC or MIDI
+files instead. For each order it:
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+1. Trains a baseline model on the corpus as-is.
+2. Trains an augmented model on the same corpus transposed into all 12
+   keys (music21's chorales are typically only in a handful of keys, so
+   this multiplies the training data roughly 12x).
+3. Generates sequences from both and scores them.
 
-***
+Output goes to `output/pipeline/` (`results.json` plus the three charts
+below) and `output/generated_files/{baseline,augmented}/order_N/` (the
+rendered `.mid` files, one per generated sequence, all at a fixed
+1-quarter-note duration since chord duration is sampled from an
+independent chain with no real timeline to inherit).
 
-# Editing this README
+For a closer listening comparison, one that reconstructs real chord
+durations and tempo from actual chorales instead of the flat placeholder
+above, run:
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+```
+python render_listening_comparison.py --orders 1 2 3
+```
 
-## Suggestions for a good README
+after the pipeline. It writes `output/generated_files/original/` (the
+five reference chorales, unmodified) and `output/generated_files/improved/`
+(the same generated chord progressions, voice-led into block chords and
+paired with a real chorale's rhythm).
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+## Results
 
-## Name
-Choose a self-explaining name for your project.
+Seed 42, orders 1 to 3, the default 412-song Bach corpus.
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+| Order | Vocabulary (baseline / augmented) | Entropy, bits (baseline / augmented) | JS-divergence |
+|-------|-----------------------------------|---------------------------------------|----------------|
+| 1     | 51 / 55                           | 2.70 / 2.99                           | 0.121          |
+| 2     | 51 / 55                           | 1.54 / 2.13                           | 0.121          |
+| 3     | 51 / 55                           | 0.81 / 1.14                           | 0.121          |
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+Only `chord_progression` shows a gap. `chord_duration` and `rhythm` are
+identical between baseline and augmented at every order, which is
+expected: transposition only changes chord roots, not timing.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+![Entropy comparison across orders](assets/plots/entropy_comparison.png)
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+![Vocabulary coverage across orders](assets/plots/vocabulary_comparison.png)
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+![N-gram diversity vs Markov order](assets/plots/diversity_comparison.png)
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+The entropy gap grows with order: at order 1 augmentation adds about
+0.3 bits, at order 3 it adds about 0.33 bits on a much smaller base (0.81
+vs. 2.70), a much larger relative gain. That lines up with the problem
+Van Der Merwe and Schulze (2011) describe: higher-order chains split
+their training data into more and smaller buckets, so they run out of
+examples for rare transitions faster than low-order chains do.
+Transposition augmentation gives each bucket more data to work with, and
+the benefit is largest exactly where the sparsity problem is worst.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+## Project layout
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+```
+main.py                          GUI entry point
+features/
+  markov.py                      n-th order Markov chain implementation
+  abc_parser.py                  loads ABC/MIDI corpora into chord/duration/rhythm sequences
+  augmentation.py                transposition augmentation
+  midi_export.py                 renders generated sequences to MIDI
+  evaluate.py                    entropy, vocabulary, diversity, JS-divergence metrics
+  markov_and_music_gui.py        main GUI window
+  midi_player_gui.py             MIDI playback window
+pipeline.py                      research pipeline entry point
+render_listening_comparison.py   renders A/B listening comparisons
+Dataset/                         MIDI datasets (Bach, Haendel, Maestro, Mozart)
+assets/plots/                    result charts referenced in this README
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+## Reference
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Van Der Merwe, A. and Schulze, W. (2011). "Music Generation with Markov
+Models." IEEE MultiMedia.

@@ -215,16 +215,21 @@ def _save_plots(all_rows: list[dict]) -> None:
         labels = [r["chain"].replace("_", "\n") for r in rows]
         x = list(range(len(labels)))
         w = 0.27
-        ax.bar([xi - w for xi in x], [r["o_entropy"] for r in rows],
-               w, label="Original", color="gray")
-        ax.bar(x, [r["b_entropy"] for r in rows],
-               w, label="Baseline", color="steelblue")
-        ax.bar([xi + w for xi in x], [r["a_entropy"] for r in rows],
-               w, label="Augmented", color="darkorange")
+        b1 = ax.bar([xi - w for xi in x], [r["o_entropy"] for r in rows],
+                    w, label="Original", color="gray", edgecolor="black", linewidth=0.6)
+        b2 = ax.bar(x, [r["b_entropy"] for r in rows],
+                    w, label="Baseline", color="steelblue", edgecolor="black", linewidth=0.6)
+        b3 = ax.bar([xi + w for xi in x], [r["a_entropy"] for r in rows],
+                    w, label="Augmented", color="darkorange", edgecolor="black", linewidth=0.6)
+        ax.bar_label(b1, fmt="%.2f", fontsize=7, padding=2)
+        ax.bar_label(b2, fmt="%.2f", fontsize=7, padding=2)
+        ax.bar_label(b3, fmt="%.2f", fontsize=7, padding=2)
         ax.set_title(f"Order {order}")
         ax.set_xticks(x)
         ax.set_xticklabels(labels, fontsize=8)
         ax.set_ylabel("Mean Entropy (bits)")
+        ax.tick_params(labelleft=True)
+        ax.margins(y=0.15)
         ax.legend(fontsize=8)
     fig.suptitle("Mean Shannon Entropy: Original vs Baseline vs Augmented", fontsize=12)
     fig.tight_layout()
@@ -243,16 +248,21 @@ def _save_plots(all_rows: list[dict]) -> None:
         labels = [r["chain"].replace("_", "\n") for r in rows]
         x = list(range(len(labels)))
         w = 0.27
-        ax.bar([xi - w for xi in x], [r["o_vocab"] for r in rows],
-               w, label="Original", color="gray")
-        ax.bar(x, [r["b_vocab"] for r in rows],
-               w, label="Baseline", color="steelblue")
-        ax.bar([xi + w for xi in x], [r["a_vocab"] for r in rows],
-               w, label="Augmented", color="darkorange")
+        b1 = ax.bar([xi - w for xi in x], [r["o_vocab"] for r in rows],
+                    w, label="Original", color="gray", edgecolor="black", linewidth=0.6)
+        b2 = ax.bar(x, [r["b_vocab"] for r in rows],
+                    w, label="Baseline", color="steelblue", edgecolor="black", linewidth=0.6)
+        b3 = ax.bar([xi + w for xi in x], [r["a_vocab"] for r in rows],
+                    w, label="Augmented", color="darkorange", edgecolor="black", linewidth=0.6)
+        ax.bar_label(b1, fmt="%d", fontsize=7, padding=2)
+        ax.bar_label(b2, fmt="%d", fontsize=7, padding=2)
+        ax.bar_label(b3, fmt="%d", fontsize=7, padding=2)
         ax.set_title(f"Order {order}")
         ax.set_xticks(x)
         ax.set_xticklabels(labels, fontsize=8)
         ax.set_ylabel("Unique States (Vocabulary Size)")
+        ax.tick_params(labelleft=True)
+        ax.margins(y=0.15)
         ax.legend(fontsize=8)
     fig.suptitle("Vocabulary Coverage: Original vs Baseline vs Augmented", fontsize=12)
     fig.tight_layout()
@@ -283,13 +293,23 @@ def _save_plots(all_rows: list[dict]) -> None:
             next((r["a_diversity"] for r in all_rows if r["order"] == o and r["chain"] == ct), 0.0)
             for o in orders
         ]
-        ax.plot(orders, o_vals, marker="^", label="Original", color="gray", linestyle="--")
-        ax.plot(orders, b_vals, marker="o", label="Baseline", color="steelblue")
-        ax.plot(orders, a_vals, marker="s", label="Augmented", color="darkorange")
+        ax.plot(orders, o_vals, marker="^", label="Original", color="gray", linestyle="--", markeredgecolor="black", markeredgewidth=0.6)
+        ax.plot(orders, b_vals, marker="o", label="Baseline", color="steelblue", markeredgecolor="black", markeredgewidth=0.6)
+        ax.plot(orders, a_vals, marker="s", label="Augmented", color="darkorange", markeredgecolor="black", markeredgewidth=0.6)
+        for xi, yi in zip(orders, o_vals):
+            ax.annotate(f"{yi:.3f}", (xi, yi), textcoords="offset points",
+                        xytext=(0, -12), ha="center", fontsize=7, color="gray")
+        for xi, yi in zip(orders, b_vals):
+            ax.annotate(f"{yi:.3f}", (xi, yi), textcoords="offset points",
+                        xytext=(-18, 4), ha="center", fontsize=7, color="steelblue")
+        for xi, yi in zip(orders, a_vals):
+            ax.annotate(f"{yi:.3f}", (xi, yi), textcoords="offset points",
+                        xytext=(18, 4), ha="center", fontsize=7, color="darkorange")
         ax.set_title(ct.replace("_", " ").title(), fontsize=10)
         ax.set_xlabel("Markov Order")
         ax.set_ylabel("N-gram Diversity")
         ax.set_xticks(orders)
+        ax.margins(y=0.15)
         ax.legend(fontsize=8)
         ax.grid(axis="y", linestyle="--", alpha=0.5)
     fig.suptitle("N-gram Diversity vs Markov Order: Original vs Baseline vs Augmented", fontsize=12)
