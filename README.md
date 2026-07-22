@@ -15,6 +15,29 @@ Two separate things live here:
    and measures the difference with entropy, vocabulary coverage, n-gram
    diversity, and Jensen-Shannon divergence.
 
+## Why transposition augmentation
+
+An n-th order Markov chain conditions on the last `n` symbols, so the
+number of distinct contexts it has to learn grows fast with `n`. With a
+few hundred chorales, an order-1 model still sees most chord transitions
+many times, but an order-3 model splits the same data across far more
+contexts and starts running out of examples for anything uncommon.
+Van Der Merwe and Schulze (2011) identify this data sparsity as the main
+limitation of Markov-chain music generation, and note that it gets worse
+exactly as the order goes up, which is also where higher-order chains are
+supposed to produce more coherent, less repetitive output.
+
+Transposition augmentation is a way to test whether more training data
+fixes this without changing what the model is learning: shifting a
+chorale into a different key relabels its chords onto new roots but
+keeps every harmonic relationship between them intact, so it multiplies
+the corpus roughly 12x without inventing progressions that weren't
+there. If the sparsity explanation is right, the augmented model's
+advantage over the baseline should show up mainly at higher orders,
+where the baseline is running out of data fastest. The results below
+back that: the entropy gap between baseline and augmented essentially
+triples from order 1 to order 3.
+
 ## How generation works
 
 A song isn't modeled as one sequence. It's split into three independent
